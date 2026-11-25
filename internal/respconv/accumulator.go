@@ -63,6 +63,8 @@ type responseAccumulator struct {
 	ConversationID string
 	// Text presence.
 	HasText bool
+	// Nonempty upstream metadata stop reason, retained for diagnostics only.
+	upstreamStopReason string
 	// Adapter-side stop tracking.
 	LocalStop    bool
 	StopReason   string // StopReasonStopSequence or StopReasonMaxTokens
@@ -122,6 +124,24 @@ func (a *responseAccumulator) IsEmptyVisibleEndTurn() bool {
 	}
 	hasReasoning := a.ThinkingBuf.Len() > 0 || len(a.RedactedContents) > 0
 	return hasReasoning && a.TextBuf.Len() == 0 && !a.HasToolUse
+}
+
+// stopDiagnostics observes the accumulator without flushing or changing stop/retry decisions.
+func (a *responseAccumulator) stopDiagnostics() (shape, upstream, resolved string) {
+	switch {
+	case a.TextBuf.Len() > 0 || a.HasToolUse:
+		shape = "visible"
+	case a.ThinkingBuf.Len() > 0 || len(a.RedactedContents) > 0:
+		shape = "reasoning_only"
+	default:
+		shape = "empty"
+	}
+	upstream = a.upstreamStopReason
+	if upstream == "" {
+		upstream = "absent"
+	}
+	resolved, _ = a.resolveStopReason()
+	return
 }
 
 // accumulateThinking applies max_tokens budget to thinking content and writes to ThinkingBuf.

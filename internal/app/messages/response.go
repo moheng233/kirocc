@@ -29,6 +29,29 @@ func roundCredits(c float64) float64 {
 
 const retryReasonEmptyVisibleEndTurn = "empty_visible_end_turn"
 
+// logStopDiagnostics records the upstream verdict separately from the adapter's
+// decision. Do not turn inferred truncation into an upstream stop reason.
+func logStopDiagnostics(ctx context.Context, short string, capture *upstreamAttemptCapture, source interface {
+	StopDiagnostics() (string, string, string)
+}, retry bool, extra ...any) {
+	shape, upstream, resolved := source.StopDiagnostics()
+	if !retry && shape != "empty" {
+		return
+	}
+	attrs := []any{"response_shape", shape, "upstream_stop_reason", upstream, "resolved_stop_reason", resolved}
+	if capture != nil {
+		capture.stopAttrs = attrs
+	}
+	args := append([]any{"trace_id", short, "retry", retry}, attrs...)
+	args = append(args, extra...)
+	args = append(args, capture.logAttrs()...)
+	msg := "empty upstream response detected"
+	if retry {
+		msg = "empty visible end_turn detected"
+	}
+	slog.WarnContext(ctx, msg, args...)
+}
+
 func (s *Service) handleStreamingResponse(ctx context.Context, session *streamSession, apiResp *kiroclient.Response, kiroModel, model string, contextWindowSize int, stopSequences []string, maxTokens int, preCountedInputTokens int, capture *upstreamAttemptCapture, toolNameMap map[string]string) string {
 	traceID, short := logging.TraceIDs(ctx)
 
@@ -138,16 +161,10 @@ func (s *Service) handleStreamingResponse(ctx context.Context, session *streamSe
 	// Detect empty visible end_turn (thinking-only response with no visible text).
 	// Keep retry eligibility on semantic promotion, not HTTP commitment: a
 	// previously sent keep-alive is harmless to the second attempt.
-	if !streamErr && !localStop && sw.IsEmptyVisibleEndTurn() && !session.IsPromoted() {
+	retryEmpty := !streamErr && !localStop && sw.IsEmptyVisibleEndTurn() && !session.IsPromoted()
+	logStopDiagnostics(ctx, short, capture, sw, retryEmpty, "thinking_chars", sw.ThinkingLen(), "has_tool_use", sw.HasToolUse())
+	if retryEmpty {
 		session.Discard()
-		args := []any{
-			"trace_id", short,
-			"thinking_chars", sw.ThinkingLen(),
-			"has_tool_use", false,
-			"retry", true,
-		}
-		args = append(args, capture.logAttrs()...)
-		slog.WarnContext(ctx, "empty visible end_turn detected", args...)
 		if credits, ok := sw.Credits(); ok {
 			logAbortedAttemptCredits(ctx, short, credits, retryReasonEmptyVisibleEndTurn)
 		}
@@ -226,15 +243,9 @@ func (s *Service) handleNonStreamingResponse(ctx context.Context, w http.Respons
 	resp, stats := acc.BuildResponse(model)
 
 	// Detect empty visible end_turn (thinking-only response with no visible text).
-	if acc.IsEmptyVisibleEndTurn() {
-		args := []any{
-			"trace_id", short,
-			"thinking_chars", acc.ThinkingLen(),
-			"has_tool_use", false,
-			"retry", true,
-		}
-		args = append(args, capture.logAttrs()...)
-		slog.WarnContext(ctx, "empty visible end_turn detected", args...)
+	retryEmpty := acc.IsEmptyVisibleEndTurn()
+	logStopDiagnostics(ctx, short, capture, acc, retryEmpty, "thinking_chars", acc.ThinkingLen(), "has_tool_use", acc.HasToolUse())
+	if retryEmpty {
 		if credits, ok := acc.Credits(); ok {
 			logAbortedAttemptCredits(ctx, short, credits, retryReasonEmptyVisibleEndTurn)
 		}

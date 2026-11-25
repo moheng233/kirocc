@@ -547,8 +547,9 @@ func TestE2E_EmptyVisibleEndTurn_Streaming_SavesFailureCapture(t *testing.T) {
 	logBuf := setupCaptureTest(t)
 
 	thinkingOnly := []any{
-		"assistantResponseEvent", mustJSON(map[string]string{"content": "<thinking>Let me think</thinking>"}),
+		"reasoningContentEvent", mustJSON(map[string]string{"text": "Let me think"}),
 		"metadataEvent", mustJSON(map[string]any{
+			"stopReason": "MALFORMED_TOOL_USE",
 			"tokenUsage": map[string]any{"uncachedInputTokens": 10, "outputTokens": 5, "totalTokens": 15},
 		}),
 	}
@@ -602,14 +603,20 @@ func TestE2E_EmptyVisibleEndTurn_Streaming_SavesFailureCapture(t *testing.T) {
 	if !strings.Contains(string(headerJSON), "req-1") {
 		t.Errorf("response_headers should contain req-1, got: %s", headerJSON)
 	}
-	// events should contain assistantResponseEvent.
+	for _, rec := range captureRecords {
+		a, _ := rec["attributes"].(map[string]any)
+		if a["response_shape"] != "reasoning_only" || a["upstream_stop_reason"] != "MALFORMED_TOOL_USE" || a["resolved_stop_reason"] != "end_turn" {
+			t.Errorf("unexpected terminal diagnostics: shape=%v upstream=%v resolved=%v", a["response_shape"], a["upstream_stop_reason"], a["resolved_stop_reason"])
+		}
+	}
+	// The decoded metadata event should retain the upstream verdict too.
 	events, ok := attrs["events"].([]any)
 	if !ok || len(events) == 0 {
 		t.Fatalf("events should be a non-empty array, got %T: %v", attrs["events"], attrs["events"])
 	}
 	eventsJSON, _ := json.Marshal(events)
-	if !strings.Contains(string(eventsJSON), "assistantResponseEvent") {
-		t.Errorf("events should contain assistantResponseEvent, got: %s", eventsJSON)
+	if !strings.Contains(string(eventsJSON), `"upstream_stop_reason":"MALFORMED_TOOL_USE"`) {
+		t.Errorf("missing upstream verdict in captured events: %s", eventsJSON)
 	}
 	// request_body should be present and non-empty.
 	if attrs["request_body"] == nil {

@@ -15,6 +15,7 @@ import (
 )
 
 type upstreamCapturedEvent struct {
+	UpstreamStopReason     string  `json:"upstream_stop_reason,omitempty"`
 	Seq                    int     `json:"seq"`
 	Type                   string  `json:"type"`
 	Content                string  `json:"content,omitempty"`
@@ -52,6 +53,7 @@ type upstreamAttemptCapture struct {
 	requestBody       []byte
 	responseHeader    http.Header
 	events            []upstreamCapturedEvent
+	stopAttrs         []any
 
 	assistantResponseEvents int
 	reasoningEvents         int
@@ -121,6 +123,7 @@ func (c *upstreamAttemptCapture) recordEvent(e kiroproto.Event) {
 	}
 
 	evt := upstreamCapturedEvent{
+		UpstreamStopReason:     e.UpstreamStopReason,
 		Seq:                    len(c.events) + 1,
 		Type:                   e.Type,
 		Content:                e.Content,
@@ -202,6 +205,7 @@ func (c *upstreamAttemptCapture) logCapture(ctx context.Context, reason string) 
 		"stream", c.stream,
 		"conversation_id", c.conversationID,
 	}
+	args = append(args, c.stopAttrs...)
 	args = append(args, c.logAttrs()...)
 	args = append(args,
 		"request_body", jsontext.Value(c.requestBody),

@@ -78,6 +78,9 @@ func TestParseStream_SingleEvents(t *testing.T) {
 				if e.Type != "metadataEvent" {
 					t.Errorf("Type = %q", e.Type)
 				}
+				if e.UpstreamStopReason != "" {
+					t.Errorf("absent stopReason = %q", e.UpstreamStopReason)
+				}
 				if e.UncachedInputTokens != 200 {
 					t.Errorf("UncachedInputTokens = %d", e.UncachedInputTokens)
 				}
@@ -92,6 +95,32 @@ func TestParseStream_SingleEvents(t *testing.T) {
 				}
 				if e.InputTokens != 220 {
 					t.Errorf("InputTokens = %d, want 220 (uncached+cacheRead)", e.InputTokens)
+				}
+			},
+		},
+		{
+			name:      "metadataEvent with stop reason",
+			eventType: EventMetadata,
+			payload: map[string]any{
+				"stopReason": "MALFORMED_TOOL_USE",
+				"tokenUsage": map[string]int{"outputTokens": 42},
+			},
+			check: func(t *testing.T, e Event) {
+				if e.UpstreamStopReason != "MALFORMED_TOOL_USE" || e.OutputTokens != 42 {
+					t.Errorf("stopReason = %q, outputTokens = %d", e.UpstreamStopReason, e.OutputTokens)
+				}
+			},
+		},
+		{
+			name:      "metadataEvent with non-string stop reason preserves usage",
+			eventType: EventMetadata,
+			payload: map[string]any{
+				"stopReason": 123,
+				"tokenUsage": map[string]int{"outputTokens": 42},
+			},
+			check: func(t *testing.T, e Event) {
+				if e.UpstreamStopReason != "" || e.OutputTokens != 42 {
+					t.Errorf("stopReason = %q, outputTokens = %d", e.UpstreamStopReason, e.OutputTokens)
 				}
 			},
 		},

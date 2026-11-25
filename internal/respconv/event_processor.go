@@ -62,6 +62,9 @@ func (a *responseAccumulator) ProcessEvent(e kiroproto.Event) EventDelta {
 		a.processToolUseEvent(e, &d)
 
 	case kiroproto.EventMetadata:
+		if e.UpstreamStopReason != "" {
+			a.upstreamStopReason = e.UpstreamStopReason
+		}
 		// Kiro may emit metadataEvent without tokenUsage. Treat an all-zero
 		// event as missing usage rather than authoritative data; otherwise it
 		// would erase metering counts and suppress the pre-count/context fallback.

@@ -447,6 +447,11 @@ func (s *SSEWriter) IsEmptyVisibleEndTurn() bool {
 	return s.acc.IsEmptyVisibleEndTurn()
 }
 
+// StopDiagnostics reports the accumulated content shape, upstream stop reason, and resolved stop reason.
+func (s *SSEWriter) StopDiagnostics() (shape, upstream, resolved string) {
+	return s.acc.stopDiagnostics()
+}
+
 // ThinkingLen returns the length of accumulated thinking content.
 func (s *SSEWriter) ThinkingLen() int {
 	return s.acc.ThinkingBuf.Len()

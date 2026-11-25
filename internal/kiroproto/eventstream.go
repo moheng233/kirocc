@@ -13,16 +13,17 @@ import (
 
 // Event represents a parsed event from the Kiro event stream.
 type Event struct {
-	Type         string // event type from header
-	Content      string // assistantResponseEvent → content field
-	ThinkingText string // reasoningContentEvent → text field
-	ToolName     string // toolUseEvent
-	ToolUseID    string
-	ToolInput    string
-	ToolStop     bool
-	Credits      float64 // meteringEvent → usage field
-	InputTokens  int     // meteringEvent or metadataEvent
-	OutputTokens int     // meteringEvent or metadataEvent
+	Type               string // event type from header
+	Content            string // assistantResponseEvent → content field
+	ThinkingText       string // reasoningContentEvent → text field
+	ToolName           string // toolUseEvent
+	ToolUseID          string
+	ToolInput          string
+	ToolStop           bool
+	Credits            float64 // meteringEvent → usage field
+	InputTokens        int     // meteringEvent or metadataEvent
+	OutputTokens       int     // meteringEvent or metadataEvent
+	UpstreamStopReason string  // metadataEvent → stopReason, empty when not reported
 	// metadataEvent token breakdown
 	UncachedInputTokens   int
 	CacheReadInputTokens  int
@@ -155,6 +156,7 @@ func ParseStream(ctx context.Context, r io.Reader, callback func(Event) bool) er
 
 		case EventMetadata:
 			var m struct {
+				StopReason jsontext.Value `json:"stopReason"`
 				TokenUsage struct {
 					UncachedInputTokens   int `json:"uncachedInputTokens"`
 					OutputTokens          int `json:"outputTokens"`
@@ -165,8 +167,14 @@ func ParseStream(ctx context.Context, r io.Reader, callback func(Event) bool) er
 			}
 			if err := json.Unmarshal(payload, &m); err == nil {
 				tu := m.TokenUsage
+				// Ignore non-string reasons without discarding valid token usage.
+				var reason string
+				if m.StopReason.Kind() == '"' {
+					_ = json.Unmarshal(m.StopReason, &reason)
+				}
 				stop = callback(Event{
 					Type:                  eventType,
+					UpstreamStopReason:    reason,
 					UncachedInputTokens:   tu.UncachedInputTokens,
 					CacheReadInputTokens:  tu.CacheReadInputTokens,
 					CacheWriteInputTokens: tu.CacheWriteInputTokens,

@@ -276,9 +276,10 @@ func (o *serverToolOrchestrator) handleStreaming(ctx context.Context, session *s
 				}
 			}
 			// Detect empty visible end_turn (thinking-only response) and signal retry.
-			if !localStop && sw.IsEmptyVisibleEndTurn() && !session.IsPromoted() {
+			retryEmpty := !localStop && sw.IsEmptyVisibleEndTurn() && !session.IsPromoted()
+			logStopDiagnostics(ctx, short, nil, sw, retryEmpty, "server_tool_round", round+1)
+			if retryEmpty {
 				session.Discard()
-				slog.WarnContext(ctx, "empty visible end_turn detected in server tool loop", "trace_id", short)
 				if credits, ok := totals.creditsWith(sw.Credits()); ok {
 					logAbortedAttemptCredits(ctx, short, credits, retryReasonEmptyVisibleEndTurn)
 				}
@@ -475,8 +476,9 @@ func (o *serverToolOrchestrator) handleNonStreaming(ctx context.Context, w http.
 
 		if interceptedName == "" {
 			// Detect empty visible end_turn (thinking-only response) and signal retry.
-			if acc.IsEmptyVisibleEndTurn() {
-				slog.WarnContext(ctx, "empty visible end_turn detected in server tool loop", "trace_id", short)
+			retryEmpty := acc.IsEmptyVisibleEndTurn()
+			logStopDiagnostics(ctx, short, nil, acc, retryEmpty, "server_tool_round", round+1)
+			if retryEmpty {
 				if totals.hasCredits {
 					logAbortedAttemptCredits(ctx, short, totals.credits, retryReasonEmptyVisibleEndTurn)
 				}

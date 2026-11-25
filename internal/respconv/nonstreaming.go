@@ -85,6 +85,11 @@ func (n *NonStreamingAccumulator) IsEmptyVisibleEndTurn() bool {
 	return n.acc.IsEmptyVisibleEndTurn()
 }
 
+// StopDiagnostics reports the accumulated content shape, upstream stop reason, and resolved stop reason.
+func (n *NonStreamingAccumulator) StopDiagnostics() (shape, upstream, resolved string) {
+	return n.acc.stopDiagnostics()
+}
+
 // ThinkingLen returns the length of accumulated thinking content.
 func (n *NonStreamingAccumulator) ThinkingLen() int {
 	return n.acc.ThinkingBuf.Len()
